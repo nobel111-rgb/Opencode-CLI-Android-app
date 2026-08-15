@@ -32,24 +32,7 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-wrapper-properties: gradle/wrapper/gradle-wrapper.properties
-      name: Update Gradle Wrapper
 
-on:
-  schedule:
-    - cron: "0 0 * * *"
-
-jobs:
-  update-gradle-wrapper:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Update Gradle Wrapper
-        uses: gradle-update/update-gradle-wrapper-action@v2
-        
       - name: Prepare Environment & Keystores
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -107,7 +90,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'android' }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
         run: |
-          gradle assembleDebug assembleRelease --no-daemon --stacktrace -Dorg.gradle.configuration-cache=false
+          ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace -Dorg.gradle.configuration-cache=false
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
