@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APKs
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Debug APK
+    name: Build Debug & Release APKs
     runs-on: ubuntu-latest
 
     steps:
@@ -35,9 +35,13 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Prepare environment & Keystore
+      - name: Prepare Environment & Keystores
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          # Ensure .env and .env.example exist for secrets plugin
+          # 1. Ensure .env and .env.example exist for secrets gradle plugin
           if [ -f ".env.example" ] && [ ! -f ".env" ]; then
             cp .env.example .env
           elif [ ! -f ".env" ]; then
@@ -47,14 +51,12 @@ jobs:
             touch .env.example
           fi
 
-          # Ensure debug.keystore is present and valid
+          # 2. Setup Debug Keystore
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
           fi
-
-          # If debug.keystore is still missing or empty, generate a valid one with keytool
           if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
-            echo "Generating fresh debug.keystore..."
+            echo "Generating debug.keystore..."
             keytool -genkeypair \
               -v \
               -keystore debug.keystore \
@@ -67,14 +69,43 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Build Debug APK
+          # 3. Setup Release Keystore (my-upload-key.jks)
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "Decoding release keystore from secrets..."
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks 2>/dev/null || echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks 2>/dev/null
+          elif [ ! -f "my-upload-key.jks" ]; then
+            echo "Generating standard upload key for release build..."
+            keytool -genkeypair \
+              -v \
+              -keystore my-upload-key.jks \
+              -storepass "${SECRET_STORE_PASSWORD:-android}" \
+              -alias upload \
+              -keypass "${SECRET_KEY_PASSWORD:-android}" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Release Key,O=OpenCode,C=US"
+          fi
+
+      - name: Build Debug & Release APKs
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'android' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'android' }}
         run: |
-          gradle assembleDebug --no-daemon --stacktrace -Dorg.gradle.configuration-cache=false
+          gradle assembleDebug assembleRelease --no-daemon --stacktrace -Dorg.gradle.configuration-cache=false
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: opencode-cli-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli-release-apk
+          path: app/build/outputs/apk/release/*.apk
           retention-days: 14
           if-no-files-found: error
