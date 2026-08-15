@@ -2,3 +2,7 @@
   name: Build Android APKs
   refs:
   - refs/heads/main
+  events:
+  - type: PULL_REQUEST
+    branches:
+    - main
