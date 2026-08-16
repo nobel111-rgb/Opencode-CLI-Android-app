@@ -8,6 +8,11 @@ on:
     branches:
       - main
 
+
+permissions:
+  contents: write   # ← critical for the push step
+
+
 jobs:
   build:
     runs-on: ubuntu-latest
