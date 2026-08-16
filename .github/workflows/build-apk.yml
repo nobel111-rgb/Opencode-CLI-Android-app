@@ -21,27 +21,29 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Accept Android SDK Licenses
+      - name: Install Android SDK Components & Accept Licenses
         run: |
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > "$ANDROID_HOME/licenses/android-sdk-license" || true
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license" || true
           yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
 
-      - name: Prepare Environment & Keystores
+      - name: Prepare Environment, Google Services & Keystores
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
           STORE_PWD_SECRET: ${{ secrets.STORE_PASSWORD }}
           KEY_PWD_SECRET: ${{ secrets.KEY_PASSWORD }}
         run: |
-          # Resolve passwords with fallback to default "android"
           STORE_PASSWORD="${STORE_PWD_SECRET:-android}"
           KEY_PASSWORD="${KEY_PWD_SECRET:-android}"
 
@@ -55,7 +57,42 @@ jobs:
             touch .env.example
           fi
 
-          # 2. Setup Debug Keystore
+          # 2. Create dummy google-services.json if not present
+          if [ ! -f "app/google-services.json" ]; then
+            cat << 'EOF' > app/google-services.json
+{
+  "project_info": {
+    "project_number": "123456789012",
+    "project_id": "dummy-project",
+    "storage_bucket": "dummy-project.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789012:android:0123456789abcdef",
+        "android_client_info": {
+          "package_name": "com.aistudio.opencode.cli"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "dummy_api_key"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
+EOF
+          fi
+
+          # 3. Setup Debug Keystore
           if [ -f "debug.keystore.base64" ]; then
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore 2>/dev/null || true
           fi
@@ -73,11 +110,12 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-          # 3. Setup Release Keystore (my-upload-key.jks)
+          # 4. Setup Release Keystore (my-upload-key.jks)
           if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
             echo "Decoding release keystore from secrets..."
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks 2>/dev/null || echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks 2>/dev/null
-          elif [ ! -f "my-upload-key.jks" ]; then
+            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > my-upload-key.jks 2>/dev/null || echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks 2>/dev/null || true
+          fi
+          if [ ! -f "my-upload-key.jks" ] || [ ! -s "my-upload-key.jks" ]; then
             echo "Generating upload key for release build..."
             keytool -genkeypair \
               -v \
@@ -98,17 +136,17 @@ jobs:
         run: |
           export STORE_PASSWORD="${STORE_PWD_SECRET:-android}"
           export KEY_PASSWORD="${KEY_PWD_SECRET:-android}"
+          export KEY_ALIAS="upload"
           export KEYSTORE_PATH="$GITHUB_WORKSPACE/my-upload-key.jks"
           gradle assembleDebug assembleRelease --no-daemon --stacktrace -Dorg.gradle.configuration-cache=false
 
       - name: Create Repo Build Folder & Copy APKs
         run: |
-          # Create build directory in repository root
           mkdir -p build
 
-          # Copy both Debug and Release APKs to ./build
-          cp -f app/build/outputs/apk/debug/*.apk build/OpenCode-CLI-debug.apk 2>/dev/null || cp -f app/build/outputs/apk/debug/* build/ 2>/dev/null || true
-          cp -f app/build/outputs/apk/release/*.apk build/OpenCode-CLI-release.apk 2>/dev/null || cp -f app/build/outputs/apk/release/* build/ 2>/dev/null || true
+          # Copy generated APKs to ./build directory
+          find app/build/outputs/apk/debug -name "*.apk" -exec cp -f {} build/OpenCode-CLI-debug.apk \; 2>/dev/null || true
+          find app/build/outputs/apk/release -name "*.apk" -exec cp -f {} build/OpenCode-CLI-release.apk \; 2>/dev/null || true
 
           echo "Repository build folder contents:"
           ls -lh build/

@@ -34,14 +34,15 @@ fi
 # 3. Setup upload keystore for release if needed
 export STORE_PASSWORD="${STORE_PASSWORD:-android}"
 export KEY_PASSWORD="${KEY_PASSWORD:-android}"
+export KEY_ALIAS="${KEY_ALIAS:-upload}"
 
-if [ ! -f "my-upload-key.jks" ]; then
+if [ ! -f "my-upload-key.jks" ] || [ ! -s "my-upload-key.jks" ]; then
   echo "Generating upload key for release build..."
   keytool -genkeypair \
     -v \
     -keystore my-upload-key.jks \
     -storepass "$STORE_PASSWORD" \
-    -alias upload \
+    -alias "$KEY_ALIAS" \
     -keypass "$KEY_PASSWORD" \
     -keyalg RSA \
     -keysize 2048 \
@@ -57,10 +58,10 @@ mkdir -p build
 echo "Compiling Debug & Release APKs..."
 gradle assembleDebug assembleRelease --no-daemon --stacktrace -Dorg.gradle.configuration-cache=false
 
-# 5. Copy built APKs to root build folder with clean names
+# 5. Copy built APKs to root build folder
 echo "Copying APKs to ./build directory..."
-cp -f app/build/outputs/apk/debug/*.apk build/OpenCode-CLI-debug.apk 2>/dev/null || cp -f app/build/outputs/apk/debug/* build/ 2>/dev/null || true
-cp -f app/build/outputs/apk/release/*.apk build/OpenCode-CLI-release.apk 2>/dev/null || cp -f app/build/outputs/apk/release/* build/ 2>/dev/null || true
+find app/build/outputs/apk/debug -name "*.apk" -exec cp -f {} build/OpenCode-CLI-debug.apk \; 2>/dev/null || true
+find app/build/outputs/apk/release -name "*.apk" -exec cp -f {} build/OpenCode-CLI-release.apk \; 2>/dev/null || true
 
 echo "=========================================="
 echo " Build Completed Successfully!"
