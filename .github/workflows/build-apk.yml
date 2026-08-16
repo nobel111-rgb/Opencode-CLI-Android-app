@@ -34,12 +34,12 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          # Create a temporary debug keystore if release secrets are not provided
-          if [ -z "$KEYSTORE_PATH" ]; then
-            echo "No keystore secrets found, building unsigned release APK..."
-            ./gradlew assembleRelease --exclude-task signReleaseBundle
-          else
+          # Check if keystore secrets are provided
+          if [ -n "$KEYSTORE_PATH" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "Building signed release APK..."
+            ./gradlew assembleRelease
+          else
+            echo "No keystore secrets found, building unsigned release APK..."
             ./gradlew assembleRelease
           fi
 
