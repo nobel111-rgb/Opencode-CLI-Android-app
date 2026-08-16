@@ -29,7 +29,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease
+        env:
+          KEYSTORE_PATH: ${{ secrets.KEYSTORE_PATH }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # Create a temporary debug keystore if release secrets are not provided
+          if [ -z "$KEYSTORE_PATH" ]; then
+            echo "No keystore secrets found, building unsigned release APK..."
+            ./gradlew assembleRelease --exclude-task signReleaseBundle
+          else
+            echo "Building signed release APK..."
+            ./gradlew assembleRelease
+          fi
 
       - name: Create build folder in root
         run: mkdir -p build
